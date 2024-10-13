@@ -133,12 +133,14 @@ impl Game {
 }
 
 fn main() {
+    print!("\x1b[?25l");
     clear();
+
     let mut game = Game::new();
 
     game.start();
 
-    print!("\x1b[l");
+    print!("\x1b[?25h");
 }
 
 fn clear() {
