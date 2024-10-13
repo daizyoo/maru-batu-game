@@ -1,3 +1,5 @@
+mod online;
+
 type Field = [[Option<Square>; 3]; 3];
 
 const INPUT_MAP: [(usize, usize); 9] = [
