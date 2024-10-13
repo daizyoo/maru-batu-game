@@ -43,7 +43,9 @@ impl Game {
 
     fn turn(&mut self, num: usize) -> bool {
         if let Some((x, y)) = INPUT_MAP.get(num - 1) {
-            self.field[*x][*y] = Some(self.turn_square());
+            if self.field[*x][*y].is_none() {
+                self.field[*x][*y] = Some(self.turn_square());
+            }
             return true;
         }
         false
@@ -131,13 +133,12 @@ impl Game {
 }
 
 fn main() {
-    print!("\x1b[?25l");
-
+    clear();
     let mut game = Game::new();
 
     game.start();
 
-    print!("\x1b[?25h");
+    print!("\x1b[l");
 }
 
 fn clear() {
