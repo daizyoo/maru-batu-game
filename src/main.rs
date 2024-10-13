@@ -149,8 +149,9 @@ fn clear() {
 }
 
 fn input<T: std::str::FromStr>() -> T {
-    let mut line = String::new();
     loop {
+        let mut line = String::new();
+
         if std::io::stdin().read_line(&mut line).is_err() {
             println!("input continue");
             continue;
