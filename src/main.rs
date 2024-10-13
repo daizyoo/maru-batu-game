@@ -60,10 +60,12 @@ impl Game {
                 .count()
         };
 
+        // horizontal
         for y in field {
             check_counts.push(count(y));
         }
 
+        // vertical
         for i in 0..3 {
             for (x, y) in field.iter().enumerate() {
                 line[x] = y[i];
@@ -71,6 +73,7 @@ impl Game {
             check_counts.push(count(line));
         }
 
+        // diagonal
         for (l, i) in (0..3).enumerate() {
             line[l] = field[i][i]
         }
@@ -91,6 +94,8 @@ impl Game {
     }
 
     fn draw(&self) {
+        clear();
+
         for y in self.field {
             for s in y {
                 if let Some(s) = s {
@@ -101,29 +106,43 @@ impl Game {
             }
             println!()
         }
+        println!("turn: {:?}", self.turn_square());
+    }
+
+    fn start(&mut self) {
+        loop {
+            self.draw();
+            if !self.turn(input()) {
+                println!("input continue: not number");
+                continue;
+            }
+
+            if self.check() {
+                break;
+            }
+
+            self.turn = !self.turn;
+        }
+
+        self.draw();
+
+        println!("winner: {:?}!", self.turn_square())
     }
 }
 
 fn main() {
+    print!("\x1b[?25l");
+
     let mut game = Game::new();
 
-    loop {
-        game.draw();
-        if !game.turn(input()) {
-            println!("input continue: not number");
-            continue;
-        }
+    game.start();
 
-        if game.check() {
-            break;
-        }
+    print!("\x1b[?25h");
+}
 
-        game.turn = !game.turn;
-    }
-
-    game.draw();
-
-    println!("winner: {:?}!", game.turn_square())
+fn clear() {
+    print!("\x1b[2J");
+    print!("\x1b[H");
 }
 
 fn input<T: std::str::FromStr>() -> T {
