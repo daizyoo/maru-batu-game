@@ -1,5 +1,8 @@
 mod online;
 
+use online::online;
+use serde::{Deserialize, Serialize};
+
 type Field = [[Option<Square>; 3]; 3];
 
 const INPUT_MAP: [(usize, usize); 9] = [
@@ -14,7 +17,7 @@ const INPUT_MAP: [(usize, usize); 9] = [
     (2, 2),
 ];
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 enum Square {
     Maru,
     Batu,
@@ -32,7 +35,15 @@ impl Game {
             turn: true,
         }
     }
+}
 
+impl GameF for Game {
+    fn field(&self) -> &Field {
+        &self.field
+    }
+    fn field_mut(&mut self) -> &mut Field {
+        &mut self.field
+    }
     fn turn_square(&self) -> Square {
         if self.turn {
             Square::Maru
@@ -41,10 +52,83 @@ impl Game {
         }
     }
 
+    fn start(&mut self) {
+        loop {
+            self.draw();
+            if !self.turn(input()) {
+                println!("input continue: not number");
+                continue;
+            }
+
+            if self.check() {
+                break;
+            }
+
+            self.turn = !self.turn;
+        }
+
+        self.draw();
+
+        println!("winner: {:?}!", self.turn_square())
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    print!("\x1b[?25l");
+    clear();
+
+    loop {
+        println!(">1: normal game");
+        println!(">2: online game");
+        match input() {
+            1 => Game::new().start(),
+            2 => online().await,
+            _ => {
+                println!("input continue");
+                continue;
+            }
+        }
+        break;
+    }
+
+    quit();
+}
+
+fn quit() {
+    print!("\x1b[?25h");
+}
+
+fn clear() {
+    print!("\x1b[2J");
+    print!("\x1b[H");
+}
+
+pub fn input<T: std::str::FromStr>() -> T {
+    loop {
+        let mut line = String::new();
+
+        if std::io::stdin().read_line(&mut line).is_err() {
+            println!("input continue");
+            continue;
+        }
+        if let Ok(t) = line.trim().parse() {
+            return t;
+        }
+        println!("parse error")
+    }
+}
+
+trait GameF {
+    fn field_mut(&mut self) -> &mut Field;
+    fn field(&self) -> &Field;
+
+    fn turn_square(&self) -> Square;
+
     fn turn(&mut self, num: usize) -> bool {
         if let Some((x, y)) = INPUT_MAP.get(num - 1) {
-            if self.field[*x][*y].is_none() {
-                self.field[*x][*y] = Some(self.turn_square());
+            if self.field()[*x][*y].is_none() {
+                self.field_mut()[*x][*y] = Some(self.turn_square());
             }
             return true;
         }
@@ -52,7 +136,7 @@ impl Game {
     }
 
     fn check(&mut self) -> bool {
-        let field = self.field;
+        let field = *self.field();
         let mut line = [None; 3];
         let mut check_counts: Vec<usize> = Vec::new();
         let sq = self.turn_square();
@@ -98,7 +182,7 @@ impl Game {
     fn draw(&self) {
         clear();
 
-        for y in self.field {
+        for y in self.field() {
             for s in y {
                 if let Some(s) = s {
                     print!("{:?}", s)
@@ -111,56 +195,7 @@ impl Game {
         println!("turn: {:?}", self.turn_square());
     }
 
-    fn start(&mut self) {
-        loop {
-            self.draw();
-            if !self.turn(input()) {
-                println!("input continue: not number");
-                continue;
-            }
-
-            if self.check() {
-                break;
-            }
-
-            self.turn = !self.turn;
-        }
-
-        self.draw();
-
-        println!("winner: {:?}!", self.turn_square())
-    }
-}
-
-fn main() {
-    print!("\x1b[?25l");
-    clear();
-
-    let mut game = Game::new();
-
-    game.start();
-
-    print!("\x1b[?25h");
-}
-
-fn clear() {
-    print!("\x1b[2J");
-    print!("\x1b[H");
-}
-
-fn input<T: std::str::FromStr>() -> T {
-    loop {
-        let mut line = String::new();
-
-        if std::io::stdin().read_line(&mut line).is_err() {
-            println!("input continue");
-            continue;
-        }
-        if let Ok(t) = line.trim().parse() {
-            return t;
-        }
-        println!("parse error")
-    }
+    fn start(&mut self);
 }
 
 impl std::fmt::Debug for Square {
