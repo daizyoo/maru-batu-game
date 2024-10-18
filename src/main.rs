@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 type Field = [[Option<Square>; 3]; 3];
 
+// todo いい感じの関数作りたい
 const INPUT_MAP: [(usize, usize); 9] = [
     (0, 0),
     (0, 1),
@@ -139,10 +140,13 @@ trait GameF {
         let field = *self.field();
         let mut line = [None; 3];
         let mut check_counts: Vec<usize> = Vec::new();
-        let sq = self.turn_square();
-        let count = move |line: [Option<Square>; 3]| {
+
+        let count = |line: [Option<Square>; 3]| {
             line.iter()
-                .filter(|&&s| if let Some(s) = s { s == sq } else { false })
+                .filter(|&&s| match s {
+                    Some(s) => s == self.turn_square(),
+                    None => false,
+                })
                 .count()
         };
 
@@ -183,11 +187,10 @@ trait GameF {
         clear();
 
         for y in self.field() {
-            for s in y {
-                if let Some(s) = s {
-                    print!("{:?}", s)
-                } else {
-                    print!("[ ]")
+            for square in y {
+                match square {
+                    Some(s) => print!("{:?}", s),
+                    None => print!("[ ]"),
                 }
             }
             println!()

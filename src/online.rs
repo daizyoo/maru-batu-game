@@ -2,10 +2,23 @@ use std::fmt::Debug;
 
 use reqwest::{Client, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use url::*;
 
 use crate::{input, Field, GameF, Square};
 
-const SERVER_URL: &'static str = "http://127.0.0.1:8080";
+mod url {
+    type Url<'a> = [&'a str; 2];
+    const SERVER_URL: &str = "http://127.0.0.1:8080/";
+    pub const CREATE_ROOM: Url = [SERVER_URL, "room/create"];
+    pub const ENTER_ROOM: Url = [SERVER_URL, "room/enter"];
+    pub const SYNC: Url = [SERVER_URL, "game/sync"];
+    pub const WAIT: Url = [SERVER_URL, "game/wait"];
+
+    pub fn to_url(url: [&str; 2]) -> String {
+        url.concat()
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct Response<T: Debug> {
@@ -25,7 +38,7 @@ pub struct Online {
     room: Room,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct User {
     name: String,
     square: Square,
@@ -38,7 +51,7 @@ impl User {
 }
 
 // sync
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Room {
     name: String,
     user1: User,
@@ -52,36 +65,42 @@ struct RoomInfo {
 }
 
 impl RoomInfo {
-    fn new(user_name: String, square: Square) -> RoomInfo {
+    fn new(room_name: &String, user_name: &String, square: Square) -> RoomInfo {
         RoomInfo {
-            name: input(),
-            user: User::new(user_name, square),
+            name: room_name.clone(),
+            user: User::new(user_name.clone(), square),
         }
     }
 }
 
-async fn enter_room(client: Client, room: RoomInfo) -> Result<Response<Room>> {
-    let res = client.post(SERVER_URL).json(&room).send().await?;
+async fn enter_room(room: RoomInfo) -> Result<Response<Room>> {
+    let client = Client::new();
+    let res = client.post(to_url(ENTER_ROOM)).json(&room).send().await?;
     res.json().await
 }
 
-async fn create_room(client: Client, room: RoomInfo) -> Result<Response<Room>> {
-    let res = client.post(SERVER_URL).json(&room).send().await?;
+async fn create_room(room: RoomInfo) -> Result<Response<Room>> {
+    let client = Client::new();
+    let res = client.post(to_url(CREATE_ROOM)).json(&room).send().await?;
     res.json().await
 }
 
 pub async fn online() {
-    let client = Client::new();
-    let name: String = input();
+    println!("user name input...");
+    let user_name: String = input();
+    println!("room name input...");
+    let room_name: String = input();
 
-    let room = loop {
+    println!("create or enter");
+    let (room, my) = loop {
         match input::<String>().as_str() {
             "create" => {
+                println!("wait enter...");
                 if let Ok(res) =
-                    create_room(client.clone(), RoomInfo::new(name.clone(), Square::Maru)).await
+                    create_room(RoomInfo::new(&room_name, &user_name, Square::Maru)).await
                 {
                     if let Some(r) = res.data {
-                        break r;
+                        break (r.clone(), r.user1);
                     } else {
                         eprintln!("create room error: {:?}", res);
                         continue;
@@ -90,17 +109,18 @@ pub async fn online() {
             }
             "enter" => {
                 if let Ok(res) =
-                    enter_room(client.clone(), RoomInfo::new(name.clone(), Square::Batu)).await
+                    enter_room(RoomInfo::new(&room_name, &user_name, Square::Batu)).await
                 {
                     if let Some(r) = res.data {
-                        break r;
+                        break (r.clone(), r.user2);
                     } else {
                         eprintln!("enetr room error: {:#?}", res);
                     }
                 }
             }
-            _ => continue,
+            _ => (),
         }
+        println!("error");
     };
     let mut online = Online {
         game: OnlineGame::new(room.clone().user1),
@@ -109,7 +129,7 @@ pub async fn online() {
 
     println!("{:#?}", online);
 
-    online.game.start();
+    online.start(my).await;
 }
 
 impl OnlineGame {
@@ -120,10 +140,64 @@ impl OnlineGame {
             winner: None,
         }
     }
+}
 
-    async fn sync(&self, client: Client) -> Result<Response<OnlineGame>> {
-        let res = client.post(SERVER_URL).json(&self).send().await?;
+impl Online {
+    async fn sync(&self) -> Result<Response<bool>> {
+        let res = Client::new()
+            .post(to_url(SYNC))
+            .json(&json!({
+                "game": self.game,
+                "room":self.room.name
+            }))
+            .send()
+            .await?;
         res.json().await
+    }
+
+    async fn wait(&self) -> Result<Response<OnlineGame>> {
+        let res = Client::new()
+            .post(to_url(WAIT))
+            .json(&json!({
+                "name": self.room.name
+            }))
+            .send()
+            .await?;
+        res.json().await
+    }
+
+    async fn start(&mut self, my: User) {
+        loop {
+            self.game.draw();
+
+            if self.game.turn != my {
+                println!("wait turn...");
+                if let Ok(sync) = self.wait().await {
+                    self.game = sync.data.unwrap();
+                    continue;
+                } else {
+                    panic!("wait error")
+                }
+            }
+
+            if !self.game.turn(input()) {
+                println!("input continue: not number");
+                continue;
+            }
+            println!("turn");
+
+            if self.game.check() {
+                self.game.winner = Some(self.game.turn.clone());
+                break;
+            }
+            println!("sync");
+            if let Ok(res) = self.sync().await {
+                if !res.data.unwrap() {
+                    panic!("sync error")
+                }
+            }
+        }
+        self.game.draw();
     }
 }
 
@@ -137,31 +211,5 @@ impl GameF for OnlineGame {
     fn turn_square(&self) -> Square {
         self.turn.square
     }
-
-    #[tokio::main(flavor = "current_thread")]
-    async fn start(&mut self) {
-        loop {
-            self.draw();
-            if !self.turn(input()) {
-                println!("input continue: not number");
-                continue;
-            }
-
-            if self.check() {
-                self.winner = Some(self.turn.clone());
-                if let Ok(r) = self.sync(Client::new()).await {
-                    println!("{:#?}", r.data)
-                }
-            }
-            if let Ok(res) = self.sync(Client::new()).await {
-                if let Some(online) = res.data {
-                    if let Some(winner) = online.winner {
-                        println!("winner!: {:#?}", winner);
-                        break;
-                    }
-                }
-            }
-        }
-        self.draw();
-    }
+    fn start(&mut self) {}
 }
