@@ -7,6 +7,15 @@ use url::*;
 
 use crate::{input, Field, GameF, Square};
 
+macro_rules! input {
+    ($(  $print:expr => $name:ident ),*) => {
+        $(
+            println!($print);
+            let $name = input();
+        )*
+    };
+}
+
 mod url {
     type Url<'a> = [&'a str; 2];
     const SERVER_URL: &str = "http://127.0.0.1:8080/";
@@ -25,14 +34,14 @@ struct Response<T: Debug> {
     data: Option<T>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct OnlineGame {
     field: Field,
     turn: User,
     winner: Option<User>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Online {
     game: OnlineGame,
     room: Room,
@@ -86,15 +95,17 @@ async fn create_room(room: RoomInfo) -> Result<Response<Room>> {
 }
 
 pub async fn online() {
-    println!("user name input...");
-    let user_name: String = input();
-    println!("room name input...");
-    let room_name: String = input();
+    // input!(
+    //     "user name input..." => user_name,
+    //     "room name input..." => room_name
+    // );
+    let user_name = String::from("daizyoo");
+    let room_name = String::from("room");
 
     println!("create or enter");
     let (room, my) = loop {
         match input::<String>().as_str() {
-            "create" => {
+            "c" => {
                 println!("wait enter...");
                 if let Ok(res) =
                     create_room(RoomInfo::new(&room_name, &user_name, Square::Maru)).await
@@ -107,7 +118,7 @@ pub async fn online() {
                     }
                 }
             }
-            "enter" => {
+            "e" => {
                 if let Ok(res) =
                     enter_room(RoomInfo::new(&room_name, &user_name, Square::Batu)).await
                 {
@@ -148,7 +159,7 @@ impl Online {
             .post(to_url(SYNC))
             .json(&json!({
                 "game": self.game,
-                "room":self.room.name
+                "room": self.room.name
             }))
             .send()
             .await?;
@@ -174,7 +185,7 @@ impl Online {
                 println!("wait turn...");
                 if let Ok(sync) = self.wait().await {
                     self.game = sync.data.unwrap();
-                    continue;
+                    self.game.draw();
                 } else {
                     panic!("wait error")
                 }
@@ -190,11 +201,20 @@ impl Online {
                 self.game.winner = Some(self.game.turn.clone());
                 break;
             }
+
+            if self.room.user1 == my {
+                self.game.turn = self.room.user2.clone()
+            } else {
+                self.game.turn = self.room.user1.clone()
+            }
+
             println!("sync");
             if let Ok(res) = self.sync().await {
                 if !res.data.unwrap() {
                     panic!("sync error")
                 }
+            } else {
+                panic!("sync error")
             }
         }
         self.game.draw();
@@ -212,4 +232,54 @@ impl GameF for OnlineGame {
         self.turn.square
     }
     fn start(&mut self) {}
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tokio::test;
+
+    const ROOM_NAME: &str = "room";
+
+    #[test]
+    async fn create() {
+        tokio::spawn(async {
+            create_room(RoomInfo {
+                name: String::from(ROOM_NAME),
+                user: User::new(String::from("daizyoo"), Square::Maru),
+            })
+            .await
+            .unwrap()
+            .data
+            .unwrap();
+        })
+        .await
+        .unwrap()
+    }
+
+    #[test]
+    async fn create_and_enter() -> Result<()> {
+        let room = enter_room(RoomInfo {
+            name: String::from(ROOM_NAME),
+            user: User::new(String::from("daizyoo2"), Square::Maru),
+        })
+        .await?
+        .data
+        .unwrap();
+
+        let online = Online {
+            game: OnlineGame::new(room.clone().user1),
+            room,
+        };
+        let online2 = online.clone();
+        tokio::spawn(async move {
+            online2.clone().wait().await.unwrap();
+        });
+
+        let sync = online.sync().await.unwrap();
+
+        // assert!(sync.data.unwrap() == true);
+
+        Ok(())
+    }
 }

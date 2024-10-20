@@ -82,7 +82,7 @@ async fn main() {
     loop {
         println!(">1: normal game");
         println!(">2: online game");
-        match input() {
+        match 2 {
             1 => Game::new().start(),
             2 => online().await,
             _ => {
