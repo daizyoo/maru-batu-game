@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use url::*;
 
-use crate::{input, Field, GameF, Square};
+use crate::{input, quit, Field, GameF, Square};
 
 macro_rules! input {
     ($(  $print:expr => $name:ident ),*) => {
@@ -185,6 +185,9 @@ impl Online {
                 println!("wait turn...");
                 if let Ok(sync) = self.wait().await {
                     self.game = sync.data.unwrap();
+                    if self.game.winner.is_some() {
+                        break;
+                    }
                     self.game.draw();
                 } else {
                     panic!("wait error")
@@ -199,7 +202,6 @@ impl Online {
 
             if self.game.check() {
                 self.game.winner = Some(self.game.turn.clone());
-                break;
             }
 
             if self.room.user1 == my {
@@ -216,8 +218,13 @@ impl Online {
             } else {
                 panic!("sync error")
             }
+            if self.game.winner.is_some() {
+                break;
+            }
         }
         self.game.draw();
+        println!("winner: {:?}", self.game.winner.as_ref().unwrap());
+        quit();
     }
 }
 
